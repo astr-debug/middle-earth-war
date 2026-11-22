@@ -304,7 +304,7 @@ function battleCalc(){
   let supA=0,supD=0;
   for(const [n,side] of Object.entries(b.sup)){ const o=G.orders[n]; if(!o) continue; const v=strength(G.units[n], side==='a'&&walls)+ORD[o.k].b; if(side==='a') supA+=v; else supD+=v; }
   const A={units:strength(b.moving,walls),order:ORD[b.ok].b,walls:0,support:supA,card:cA[1],ring:b.ring==='a'?1:0,adj:b.adj.a};
-  const Dd={units:strength(G.units[b.to],false),order:dob,walls:walls?3:0,support:supD,card:cD[1],ring:b.ring==='d'?1:0,adj:b.adj.d};
+  const Dd={units:strength(G.units[b.to],false),order:dob,walls:G.units[b.to].length?(walls?3:0):(walls?3:1),support:supD,card:cD[1],ring:b.ring==='d'?1:0,adj:b.adj.d};
   const sum=o=>Object.values(o).reduce((x,y)=>x+y,0);
   return {A,Dd,totA:sum(A),totD:sum(Dd),cA,cD,swA:Math.max(0,cA[2]+b.adj.as),shA:Math.max(0,cA[3]+b.adj.ash),swD:Math.max(0,cD[2]+b.adj.ds),shD:Math.max(0,cD[3]+b.adj.dsh)};
 }
@@ -479,7 +479,7 @@ function battlePanel(ro){
   const pm=(key,v)=>`<button onclick="G.battle.adj.${key}--;render()">−</button>${v}<button onclick="G.battle.adj.${key}++;render()">+</button>`;
   const rt=G.ring.find(i=>P(i).alive); const canRing=!G.ringUsed&&!b.ring&&(rt===b.att||rt===b.def);
   return `<h3>Бой за «${esc(D.names[b.to])}»</h3><table class="bt"><tr><th></th><th style="color:${fc(b.att)}">${esc(fA)}</th><th style="color:${fc(b.def)}">${esc(fD)}</th></tr>
-  ${row('Войска',r.A.units,r.Dd.units)}${row('Приказ',r.A.order,r.Dd.order)}${row('Замок / крепость','',r.Dd.walls)}${row('Поддержка',r.A.support,r.Dd.support)}${row('Герой',r.A.card,r.Dd.card)}${row('Кольцо',r.A.ring,r.Dd.ring)}${row('Правка силы',pm('a',r.A.adj),pm('d',r.Dd.adj))}
+  ${row('Войска',r.A.units,r.Dd.units)}${row('Приказ',r.A.order,r.Dd.order)}${row(G.units[b.to].length?'Замок / крепость':'Пустая территория','',r.Dd.walls)}${row('Поддержка',r.A.support,r.Dd.support)}${row('Герой',r.A.card,r.Dd.card)}${row('Кольцо',r.A.ring,r.Dd.ring)}${row('Правка силы',pm('a',r.A.adj),pm('d',r.Dd.adj))}
   <tr class="tot"><td>Итого</td><td>${r.totA}</td><td>${r.totD}</td></tr>${row('Мечи 🗡',pm('as',r.swA),pm('ds',r.swD))}${row('Щиты 🛡',pm('ash',r.shA),pm('dsh',r.shD))}</table>
   <div class="cards two"><div class="card"><div class="cs">${r.cA[1]}</div><b>${esc(r.cA[0])}</b><small>${esc(r.cA[4])}</small></div><div class="card"><div class="cs">${r.cD[1]}</div><b>${esc(r.cD[0])}</b><small>${esc(r.cD[4])}</small></div></div>
   <p><small>Свойства героев применяйте кнопками правки. Если свойства спорят, первым действует тот, кто выше на треке Палантира. При равенстве сил побеждает тот, кто выше на треке Кольца.</small></p>
@@ -534,6 +534,7 @@ const RULES=`<ol class="rules">
 <li><b>Приказы.</b> 7 штук, каждый один раз: атака +1, 0, −1; защита +2, +1; поддержка +1, 0. Ставятся на свои территории.</li>
 <li><b>Палантир.</b> Первый на треке после раскрытия может заменить один свой приказ. Его свойства карт действуют первыми.</li>
 <li><b>Бой.</b> Сила = войска + приказ + замок/крепость (+3, у обороны) + поддержка + герой. Мечи победителя убивают, щиты проигравшего защищают. Проигравший отступает: защитник — в соседнюю свою или пустую территорию, атакующий — назад. Осадные орудия не отступают. Постройки проигравшего защитника разрушаются.</li>
+<li><b>Пустая территория.</b> Если на своей территории нет войск, при атаке она защищается силой 1, а если там замок или крепость — силой 3.</li>
 <li><b>Кольцо.</b> При равенстве сил побеждает тот, кто выше на треке Кольца. Первый на треке раз за фазу может добавить +1.</li>
 <li><b>Контроль.</b> Ушли все войска — территория ничья, если на ней нет ваших построек. Родовая земля всегда остаётся за своей фракцией: даже пустую её можно взять только боем, а если захватчик уйдёт из неё, она вернётся владельцу.</li></ol>`;
 (function boot(){
