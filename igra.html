@@ -532,8 +532,10 @@ const RULES=`<ol class="rules">
 <li><b>Контроль.</b> Ушли все войска — территория ничья, если на ней нет ваших построек.</li></ol>`;
 (function boot(){
   const m=location.hash.match(/room=([A-Z0-9]+)/i);
-  if(m){ const room=m[1].toUpperCase(); if(lsGet('ring_role')==='host'&&lsGet('ring_room')===room){ NET.on=true; NET.room=room; G=load(); hostRoom(room); } else { NET.on=true; NET.room=room; G=load(); joinRoom(room); } }
+  if(m){ const room=m[1].toUpperCase(); if(lsGet('ring_role')==='host'&&lsGet('ring_room')===room){ NET.on=true; NET.room=room; G=load(); if(G&&G.round===1&&G.phase==='build') startPlan(); hostRoom(room); } else { NET.on=true; NET.room=room; G=load(); joinRoom(room); } }
   else { G=load(); }
+  // старые сохранения: первый раунд начинался с покупок — переводим сразу в приказы
+  if(G&&G.round===1&&G.phase==='build'&&(!NET.on||NET.host)) startPlan();
   render();
 })();
 // хост пишет ссылку в адресную строку
