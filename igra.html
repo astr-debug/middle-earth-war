@@ -189,7 +189,7 @@ function newGame(fnames){
   const hist=[...players.keys()].sort((a,b)=>HIST_ORDER.indexOf(players[a].f)-HIST_ORDER.indexOf(players[b].f));
   G={players,units,owner,bld,orders:Array(N).fill(null),round:1,phase:'build',arken:[...hist],palantir:[...hist],ring:[...hist],
      ringUsed:false,idx:0,log:['Игра началась. Раунд 1.'],battle:null,sel:null,winner:null,gate:null,cur:null};
-  startBuild(false);
+  startPlan();
 }
 
 const P=i=>G.players[i]; const fc=i=>FACTIONS[P(i).f].c;
@@ -454,7 +454,7 @@ function renderPanel(){
     if(sl.stage==='to') h+=`<p>Атака из «${esc(D.names[sl.from])}» (${ORD[sl.k].label}). Выберите соседнюю территорию.</p>`+btn('Снять приказ без атаки','attackCancelOrder();render()');
     if(sl.stage==='units'){ const o=G.owner[sl.to]; h+=`<p><b>${esc(D.names[sl.from])} → ${esc(D.names[sl.to])}</b>${o>=0&&o!==pi?` (${esc(P(o).f)})`:''}</p><p>Какие отряды идут:</p>`+G.units[sl.from].map((u,i)=>`<label class="ck"><input type="checkbox" ${sl.take[i]?'checked':''} onchange="G.sel.take[${i}]=this.checked">${UNIT[u].name}</label>`).join('')+
       (G.sel.take.every(x=>x)&&!hasBuildings(sl.from)?`<p><small>Если уйдут все, «${esc(D.names[sl.from])}» станет ничьей.</small></p>`:'')+
-      `<div class="ob">`+btn('В поход','msg=attackGo()||"";render()',false,'main')+btn('Другая цель',"G.sel.stage='to';render()")+`</div>`; }
+      `<div class="ob">`+btn('В поход',"msg=attackGo()||'';render()",false,'main')+btn('Другая цель',"G.sel.stage='to';render()")+`</div>`; }
   }
   if(!['build','plan','palantir'].includes(G.phase)&&focus!=null&&!G.battle) h+=terrInfo(focus);
   h+=playersBox();
@@ -519,8 +519,8 @@ function resetGame(){ if(NET.on){ leaveOnline(); return; } G=null; try{localStor
 const RULES=`<ol class="rules">
 <li><b>Цель.</b> Захватить всю карту и уничтожить всех противников. Число раундов не ограничено.</li>
 <li><b>Старт.</b> У каждой фракции одна родовая земля, на ней 1 пехота, и 3 монеты.</li>
-<li><b>Раунд.</b> Владычество (доход, найм, стройка) → Замыслы (тайные приказы) → Палантир → Приказы (атаки). Ходят в порядке трека Аркенстона, каждый выполняет все свои атаки.</li>
-<li><b>Доход.</b> +1 за шахту, +1 за замок, +1 за крепость, +1 первому на Аркенстоне. В первом раунде дохода нет.</li>
+<li><b>Раунд.</b> Замыслы (тайные приказы) → Палантир → Приказы (атаки) → Владычество (доход, найм, стройка). Ходят в порядке трека Аркенстона, каждый выполняет все свои атаки.</li>
+<li><b>Доход.</b> +1 за шахту, +1 за замок, +1 за крепость, +1 первому на Аркенстоне. Первый раунд начинается сразу с приказов, без покупок.</li>
 <li><b>Войска.</b> Пехота 1 (лимит 7), кавалерия 2 (5), элита 3 (1), осадное орудие 4 против замка или крепости, иначе 0 (3). Не больше 3 отрядов на территории.</li>
 <li><b>Указы.</b> Во владычество каждый делает до 5 действий (первый на Аркенстоне — до 6): найм, улучшение, стройка, роспуск отряда (бесплатно), разрушение крепости.</li>
 <li><b>Найм и улучшение</b> — только в замке, крепости или где есть казарма: пехота 1, осадное 1, пехота → кавалерия 1, кавалерия → элита 1.</li>
