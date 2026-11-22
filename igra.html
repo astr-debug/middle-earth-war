@@ -281,59 +281,10 @@ function attackGo(){
     G.owner[to]=pi; leaveOrigin(from,pi); afterAttackStep(); return null;
   }
   G.orders[from]=null; G.units[from]=staying;
-  G.battle={from,to,att:pi,def,moving,ok:s.k,sup:{},supQ:[],cards:{},adj:{a:0,d:0,as:0,ds:0,ash:0,dsh:0},ring:null,stage:'support',forceWin:null};
-  for(const n of ADJ[to]){ const o=G.orders[n]; if(o&&ORD[o.k].t==='S'&&G.units[n].length) G.battle.supQ.push(n); }
   log(`${P(pi).f} атакует «${D.names[to]}» (${P(def).f}).`);
-  nextSupport(); return null;
-}
-function nextSupport(){
-  const b=G.battle;
-  if(b.supQ.length){ const n=b.supQ[0]; return gate(G.orders[n].p,`Поддержка из «${D.names[n]}»: кого поддержать в бою за «${D.names[b.to]}»?`); }
-  b.stage='cardA'; gate(b.att,'Бой: выберите карту героя (атака).');
-}
-function supportChoose(side){ const b=G.battle; const n=b.supQ.shift(); if(side) b.sup[n]=side; nextSupport(); }
-function pickCard(i){
-  const b=G.battle;
-  if(b.stage==='cardA'){ b.cards.a=i; b.stage='cardD'; gate(b.def,'Бой: выберите карту героя (оборона).'); }
-  else { b.cards.d=i; b.stage='reveal'; G.gate=null; G.cur=b.att; }
-}
-function battleCalc(){
-  const b=G.battle, walls=hasWalls(b.to);
-  const cA=HEROES[P(b.att).f][b.cards.a], cD=HEROES[P(b.def).f][b.cards.d];
-  const dord=G.orders[b.to]; const dob=(dord&&dord.p===b.def&&ORD[dord.k].t==='D')?ORD[dord.k].b:0;
-  let supA=0,supD=0;
-  for(const [n,side] of Object.entries(b.sup)){ const o=G.orders[n]; if(!o) continue; const v=strength(G.units[n], side==='a'&&walls)+ORD[o.k].b; if(side==='a') supA+=v; else supD+=v; }
-  const A={units:strength(b.moving,walls),order:ORD[b.ok].b,walls:0,support:supA,card:cA[1],ring:b.ring==='a'?1:0,adj:b.adj.a};
-  const Dd={units:strength(G.units[b.to],false),order:dob,walls:G.units[b.to].length?(walls?3:0):(walls?3:1),support:supD,card:cD[1],ring:b.ring==='d'?1:0,adj:b.adj.d};
-  const sum=o=>Object.values(o).reduce((x,y)=>x+y,0);
-  return {A,Dd,totA:sum(A),totD:sum(Dd),cA,cD,swA:Math.max(0,cA[2]+b.adj.as),shA:Math.max(0,cA[3]+b.adj.ash),swD:Math.max(0,cD[2]+b.adj.ds),shD:Math.max(0,cD[3]+b.adj.dsh)};
+  newBattle(from,to,pi,def,moving,s.k); return null;
 }
 function killN(list,k){ list=[...list]; const order=['о','п','к','э']; for(let i=0;i<k&&list.length;i++){ let j=-1; for(const u of order){ j=list.indexOf(u); if(j>=0) break; } list.splice(j,1); } return list; }
-function battleResolve(){
-  const b=G.battle, r=battleCalc(), fA=P(b.att).f, fD=P(b.def).f;
-  let attWins = r.totA>r.totD || (r.totA===r.totD && G.ring.indexOf(b.att)<G.ring.indexOf(b.def));
-  if(attWins){
-    const loss=Math.max(0,r.swA-r.shD);
-    const before=G.units[b.to].length; let surv=killN(G.units[b.to],loss); const killed=before-surv.length;
-    surv=surv.filter(u=>u!=='о');
-    let dest=null;
-    if(surv.length){ dest=[...ADJ[b.to]].find(n=>n!==b.from && G.owner[n]===b.def && G.units[n].length+surv.length<=CAP) ?? [...ADJ[b.to]].find(n=>n!==b.from && G.owner[n]===-1 && !G.units[n].length); if(dest!=null){ G.units[dest]=G.units[dest].concat(surv); G.owner[dest]=b.def; } }
-    const lostB=hasBuildings(b.to); G.bld[b.to]={};
-    G.units[b.to]=b.moving; G.arrived[b.to]=b.moving.length; G.owner[b.to]=b.att; if(G.orders[b.to]) G.orders[b.to]=null;
-    log(`Победа ${fA} (${r.totA}:${r.totD}) в «${D.names[b.to]}». ${fD}: потери ${killed}${surv.length?(dest!=null?`, отступление в «${D.names[dest]}»`:', отступать некуда — отряды уничтожены'):''}${lostB?', постройки разрушены':''}.`);
-  } else {
-    const loss=Math.max(0,r.swD-r.shA);
-    const surv=killN(b.moving,loss).filter(u=>u!=='о');
-    const back=G.units[b.from].concat(surv).slice(0,CAP); G.units[b.from]=back;
-    if(back.length) G.owner[b.from]=b.att; else leaveOrigin(b.from,b.att);
-    log(`${fD} отбивает атаку на «${D.names[b.to]}» (${r.totA}:${r.totD}). ${fA}: потери ${b.moving.length-surv.length}.`);
-  }
-  for(const [w,pi] of [['a',b.att],['d',b.def]]){ const p=P(pi), ci=b.cards[w]; p.hand=p.hand.filter(x=>x!==ci); p.discard.push(ci); if(!p.hand.length){ p.hand=p.discard.filter(x=>x!==ci); p.discard=[ci]; } }
-  for(const n of Object.keys(b.sup)) G.orders[n]=null;
-  if(b.ring) G.ringUsed=true;
-  const att=b.att; G.battle=null; G.cur=att; checkElims(); if(G.phase==='over') return;
-  afterAttackStep();
-}
 function checkElims(){
   G.players.forEach((p,pi)=>{ if(p.alive && terrCount(pi)===0){ p.alive=false; log(`${p.f} выбывает из игры.`); } });
   const alive=G.players.map((p,i)=>i).filter(i=>P(i).alive);
@@ -343,6 +294,223 @@ function endRound(){
   G.orders=Array(N).fill(null); checkElims(); if(G.phase==='over') return;
   G.round++; log(`Раунд ${G.round}.`); startBuild(true);
 }
+
+// ===== Бой со свойствами героев (автоматически) =====
+const OTH = s => s==='a'?'d':'a';
+function bp(side){ const b=G.battle; return side==='a'?b.att:b.def; }
+function cardOf(side){ const c=G.battle.card[side]; return c?HEROES[c.f][c.i]:null; }
+function cname(side){ const c=cardOf(side); return c?c[0]:''; }
+function active(side,name){ const b=G.battle; return cname(side)===name && !b.disabled[side] && !b.cancelled; }
+function sideUnits(side){ const b=G.battle; return side==='a'?b.moving:G.units[b.to]; }
+function setSideUnits(side,list){ const b=G.battle; if(side==='a') b.moving=list; else G.units[b.to]=list; }
+function palRank(side){ return G.palantir.indexOf(bp(side)); }
+function ringRank(pi){ return G.ring.indexOf(pi); }
+function aliveCount(){ return G.players.filter(p=>p.alive).length; }
+
+function newBattle(from,to,att,def,moving,ok){
+  G.battle={from,to,att,def,moving,ok,sup:{},supQ:[],card:{},last:{},disabled:{},cancelled:false,q:[],pending:[],
+    salemeUnit:null,drogot:{},gulmatar:{},lostFoot:{a:0,d:0},ring:null,stage:'support',notes:[]};
+  for(const n of ADJ[to]){ const o=G.orders[n]; if(o&&ORD[o.k].t==='S'&&G.units[n].length) G.battle.supQ.push(n); }
+  nextSupport();
+}
+function nextSupport(){
+  const b=G.battle;
+  if(b.supQ.length){ const n=b.supQ[0]; return gate(G.orders[n].p,`Поддержка из «${D.names[n]}»: кого поддержать в бою за «${D.names[b.to]}»?`); }
+  b.stage='cardA'; gate(b.att,'Бой: выберите карту героя (атака).');
+}
+function supportChoose(side){ const b=G.battle; const n=b.supQ.shift(); if(side) b.sup[n]=side; nextSupport(); }
+function takeFromHand(pi,i){ const p=P(pi); const wasLast=p.hand.length===1; p.hand=p.hand.filter(x=>x!==i); return wasLast; }
+function pickCard(i){
+  const b=G.battle;
+  if(b.stage==='cardA'){ b.last.a=takeFromHand(b.att,i); b.card.a={f:P(b.att).f,i,own:b.att}; b.stage='cardD'; return gate(b.def,'Бой: выберите карту героя (оборона).'); }
+  if(b.stage==='cardD'){ b.last.d=takeFromHand(b.def,i); b.card.d={f:P(b.def).f,i,own:b.def}; b.notes.push(`Карты: ${cname('a')} против ${cname('d')}.`); startPre(); return; }
+  if(b.stage==='repick'){ const side=b.repickSide; b.last[side]=takeFromHand(bp(side),i); b.card[side]={f:P(bp(side)).f,i,own:bp(side)}; b.notes.push(`${P(bp(side)).f} выбирает новую карту: ${cname(side)}.`); b.stage='pre'; b.pending.push(side); runPre(); }
+}
+// --- свойства до подсчёта (в порядке трека Палантира) ---
+function startPre(){ const b=G.battle; b.stage='pre'; b.pending=['a','d'].sort((x,y)=>palRank(x)-palRank(y)); runPre(); }
+function ask(side,kind,msg,extra){ const b=G.battle; b.stage='choice'; b.ask=Object.assign({side,kind,msg},extra||{}); gate(bp(side),msg); }
+function runPre(){
+  const b=G.battle;
+  while(b.pending.length){
+    const s=b.pending.shift(), o=OTH(s), me=bp(s), en=bp(o), nm=cname(s);
+    if(b.disabled[s]){ continue; }
+    if(nm==='Галадриэль'){ if(palRank(s)<palRank(o)||!(cardOf(o)&&cardOf(o)[4])){ b.disabled[o]=true; b.notes.push(`Галадриэль: свойства карты ${cname(o)} не действуют.`); } }
+    else if(nm==='Грима'){ b.stolen={side:s,card:b.card[o]}; b.card[s]=b.card[o]; b.card[o]=null; b.grimaCard={f:P(me).f,i:HEROES[P(me).f].findIndex(c=>c[0]==='Грима'),own:me}; b.notes.push(`Грима забирает карту ${HEROES[b.stolen.card.f][b.stolen.card.i][0]}.`);
+      if(P(en).hand.length){ b.stage='repick'; b.repickSide=o; return gate(en,'Грима забрал вашу карту. Выберите другую карту героя.'); } }
+    else if(nm==='Эрестор'&&P(me).hand.length){ return ask(s,'erestor',`Эрестор: противник сыграл «${cname(o)}». Заменить Эрестора другой картой?`); }
+    else if(nm==='Ундулус'&&P(me).discard.length){ return ask(s,'undulus','Ундулус: сбросить Ундулуса и сыграть карту из сброса?'); }
+    else if(nm==='Трандуил'&&s==='d'){ return ask(s,'thranduil','Трандуил: заменить приказ на оспариваемой территории?'); }
+    else if(nm==='Мальбет'){ const opts=[]; G.orders.forEach((od,t)=>{ if(od&&od.p===en&&t!==b.from) opts.push(t); }); if(opts.length) return ask(s,'malbeth','Мальбет: снимите один приказ противника.',{opts}); }
+    else if(nm==='Радагаст'&&s==='d'){ b.cancelled=true; b.notes.push('Радагаст отменяет атаку.'); return finishCancelled(); }
+    else if(nm==='Гробок'&&s==='a'){ const opts=[]; for(let t=0;t<N;t++) if(t!==b.to&&G.owner[t]===b.def&&!hasWalls(t)) opts.push(t); if(opts.length) return ask(s,'grobok','Гробок: перенаправить атаку на другую территорию противника?',{opts}); }
+    else if(nm==='Дрогот'&&P(me).coins>0){ return ask(s,'drogot',`Дрогот: сколько монет сбросить? Сила карты будет равна этому числу. У вас ${P(me).coins}.`); }
+    else if(nm==='Салеме'){ const opts=sideUnits(o).map((u,i)=>[u,i]).filter(([u])=>u!=='о'&&UNIT[u].str<=P(me).coins); if(opts.length) return ask(s,'saleme','Салеме: заплатить монеты и забрать силу отряда противника?',{opts}); }
+    else if(nm==='Гульматар'&&!hasWalls(b.to)&&sideUnits(s).length&&sideUnits(o).length){ return ask(s,'gulmatar','Гульматар: сколько своих воинов пожертвовать? За каждого уничтожается вражеский отряд.'); }
+    else if(nm==='Алатар'&&P(en).hand.length){ return ask(s,'alatar','Алатар: выберите карту противника, которую он сбросит.'); }
+    else if(nm==='Балин'&&P(me).discard.length){ return ask(s,'balin','Балин: верните одну карту из сброса в руку.'); }
+    else applyAuto(s);
+  }
+  b.stage='reveal'; G.gate=null; G.cur=b.att;
+}
+function applyAuto(s){
+  const b=G.battle, o=OTH(s), me=bp(s), en=bp(o), nm=cname(s);
+  if(nm==='Трор'){ P(me).coins+=3; b.notes.push('Трор: +3 монеты.'); }
+  else if(nm==='Сирен'){ const L=[...sideUnits(o)]; const i=L.indexOf('п'); if(i>=0){ L.splice(i,1); setSideUnits(o,L); b.notes.push('Сирен уничтожает пеший отряд противника.'); } }
+  else if(nm==='Карш'){ const L=[...sideUnits(o)]; for(const u of ['э','к','п']){ const i=L.indexOf(u); if(i>=0){ L.splice(i,1); setSideUnits(o,L); b.notes.push(`Карш уничтожает отряд: ${UNIT[u].name.toLowerCase()}.`); break; } } }
+  else if(nm==='Саруман'){ const L=[...sideUnits(o)]; const mine=[...sideUnits(s)]; for(const u of ['э','к','п','о']){ const i=L.indexOf(u); if(i>=0&&mine.length<CAP&&count(me,u)<UNIT[u].lim){ L.splice(i,1); mine.push(u); setSideUnits(o,L); setSideUnits(s,mine); b.notes.push(`Саруман переманивает отряд: ${UNIT[u].name.toLowerCase()}.`); break; } } }
+  else if(nm==='Моргамир'){ const mine=[...sideUnits(s)]; if(mine.length<CAP&&count(me,'п')<UNIT['п'].lim){ mine.push('п'); setSideUnits(s,mine); b.notes.push('Моргамир добавляет пеший отряд.'); } }
+  else if(nm==='Эовин'){ const mine=[...sideUnits(s)]; const i=mine.indexOf('п'); if(i>=0&&count(me,'к')<UNIT['к'].lim){ mine[i]='к'; setSideUnits(s,mine); b.notes.push('Эовин: пеший отряд становится всадниками.'); } }
+  else if(nm==='Вульфгар'&&G.owner[b.to]===en&&hasBuildings(b.to)){ G.bld[b.to]={}; b.notes.push('Вульфгар разрушает постройки противника.'); }
+  else if(nm==='Кастамир'&&G.owner[b.to]===en){ const k=['mine','barracks','fort'].filter(x=>G.bld[b.to][x]).length; if(k){ P(me).coins+=k; b.notes.push(`Кастамир: +${k} монет.`); } }
+}
+function answer(v){
+  const b=G.battle, a=b.ask, s=a.side, o=OTH(s), me=bp(s), en=bp(o);
+  b.ask=null; b.stage='pre';
+  if(a.kind==='erestor'&&v!=null){ const p=P(me); p.discard.push(b.card[s].i); p.hand=p.hand.filter(x=>x!==v); b.card[s]={f:p.f,i:v,own:me}; b.notes.push(`Эрестор заменён на ${cname(s)}.`); b.pending.unshift(s); }
+  else if(a.kind==='undulus'&&v!=null){ const p=P(me); p.discard=p.discard.filter(x=>x!==v); p.discard.push(b.card[s].i); b.card[s]={f:p.f,i:v,own:me}; b.notes.push(`Ундулус: из сброса сыграна карта ${cname(s)}.`); b.pending.unshift(s); }
+  else if(a.kind==='thranduil'&&v!=null){ G.orders[b.to]={p:me,k:v}; b.notes.push(`Трандуил меняет приказ на «${ORD[v].label}».`); }
+  else if(a.kind==='malbeth'&&v!=null){ G.orders[v]=null; delete b.sup[v]; b.notes.push(`Мальбет снимает приказ в «${D.names[v]}».`); }
+  else if(a.kind==='grobok'&&v!=null){ b.to=v; for(const n of Object.keys(b.sup)) if(!ADJ[v].has(+n)) delete b.sup[n]; b.notes.push(`Гробок перенаправляет атаку на «${D.names[v]}».`); }
+  else if(a.kind==='drogot'){ const n=Math.max(0,Math.min(P(me).coins,v|0)); P(me).coins-=n; b.drogot[s]=n; b.notes.push(`Дрогот: сброшено ${n} монет.`); }
+  else if(a.kind==='saleme'&&v!=null){ const u=sideUnits(o)[v]; P(me).coins-=UNIT[u].str; b.salemeUnit={side:s,idx:v,str:UNIT[u].str}; b.notes.push(`Салеме забирает силу отряда: ${UNIT[u].name.toLowerCase()}.`); }
+  else if(a.kind==='gulmatar'){ const n=Math.max(0,Math.min(3,v|0,sideUnits(s).length)); if(n){ setSideUnits(s,killN(sideUnits(s),n)); setSideUnits(o,killN(sideUnits(o),n)); b.notes.push(`Гульматар: пожертвовано ${n}, уничтожено ${n}.`); } }
+  else if(a.kind==='alatar'&&v!=null){ const p=P(en); p.hand=p.hand.filter(x=>x!==v); p.discard.push(v); b.notes.push(`Алатар отправляет в сброс карту ${HEROES[p.f][v][0]}.`); }
+  else if(a.kind==='balin'&&v!=null){ const p=P(me); p.discard=p.discard.filter(x=>x!==v); p.hand.push(v); b.notes.push(`Балин возвращает в руку ${HEROES[p.f][v][0]}.`); }
+  runPre();
+}
+function finishCancelled(){
+  const b=G.battle;
+  const back=G.units[b.from].concat(b.moving).slice(0,CAP); G.units[b.from]=back; if(back.length) G.owner[b.from]=b.att;
+  const pa=P(b.att); pa.hand.push(b.card.a.i); // атакующий не теряет карту
+  discardCard('d',b.card.d);
+  log(b.notes.join(' ')+` Атака ${pa.f} на «${D.names[b.to]}» отменена.`);
+  endBattle();
+}
+// --- подсчёт ---
+function battleCalc(){
+  const b=G.battle; const walls=hasWalls(b.to);
+  const res={};
+  const supCount={a:0,d:0};
+  for(const [n,side] of Object.entries(b.sup)) if(G.orders[n]) supCount[side]++;
+  for(const s of ['a','d']){
+    const o=OTH(s), me=bp(s), c=cardOf(s), nm=cname(s), on=x=>active(s,x), en=x=>active(o,x);
+    const ownSiege0 = on('Древобород');
+    const unitVal=(u,mine,vsW)=>{ let v= u==='о' ? ((vsW&&!ownSiege0)?4:0) : UNIT[u].str; if(u==='к'&&en('Мухад')) v=0; if(en('Поландо')) v=Math.max(0,v-1); return v; };
+    let units=0; sideUnits(s).forEach((u,i)=>{ if(b.salemeUnit&&b.salemeUnit.side===o&&b.salemeUnit.idx===i) return; units+=unitVal(u,true,s==='a'&&walls); });
+    if(b.salemeUnit&&b.salemeUnit.side===s) units+=b.salemeUnit.str;
+    if(s==='d'&&on('Гэндальф')) units*=2;
+    const ordK = s==='a' ? b.ok : (G.orders[b.to]&&G.orders[b.to].p===b.def&&ORD[G.orders[b.to].k].t==='D' ? G.orders[b.to].k : null);
+    let order = ordK?ORD[ordK].b:0; if(en('Элендиль')) order=0; if(on('Имрахиль')||on('Азог')) order*=2;
+    let support=0; for(const [n,side] of Object.entries(b.sup)){ if(side!==s) continue; const od=G.orders[n]; if(!od) continue; let v=0; G.units[n].forEach(u=>v+=unitVal(u,false,s==='a'&&walls)); let ob=ORD[od.k].b; if(on('Азог')) ob*=2; support+=v+ob; }
+    let wallsV=0; if(s==='d'){ wallsV = G.units[b.to].length?(walls?3:0):(walls?3:1); if(en('Древобород')) wallsV = G.units[b.to].length?0:1; }
+    let card=c?c[1]:0;
+    if(c&&nm!=='Галион'&&P(me).discard.some(i=>HEROES[P(me).f][i]&&HEROES[P(me).f][i][0]==='Галион')&&c.f===P(me).f) card+=1;
+    if(on('Беорн')&&b.last[s]) card+=1;
+    if(on('Орофин')&&P(me).discard.some(i=>HEROES[P(me).f][i][0]==='Румил')) card+=1;
+    if(on('Румил')&&P(me).discard.some(i=>HEROES[P(me).f][i][0]==='Орофин')) card+=1;
+    if(on('Саурон')) card+= aliveCount()-ringRank(me);
+    if(on('Бурдур')&&s==='a'&&!(G.orders[b.to]&&ORD[G.orders[b.to].k].t==='D')) card*=2;
+    if(on('Дрогот')) card=b.drogot[s]||0;
+    if(on('Арафант')) card+=supCount[s];
+    let extra=0;
+    if(on('Даин')&&s==='a') extra+=1;
+    if(on('Арведуи')&&G.palantir.indexOf(me)<G.palantir.indexOf(bp(o))) extra+=1;
+    const cav=sideUnits(s).filter(u=>u==='к').length;
+    if(on('Теоден')) extra+=cav;
+    const ring = b.ring===s?1:0;
+    let sw = c&&!b.disabled[s]?c[2]:0, sh = c&&!b.disabled[s]?c[3]:0;
+    if(on('Даин')&&s==='a') sw+=1;
+    if(on('Боромир')&&supCount[s]===0) sw+=2;
+    if(on('Элрохил')&&s==='a') sw+=2;
+    if(on('Элладан')&&s==='d') sh+=2;
+    if(on('Халдир')){ if(s==='a') sw+=2; else sh+=2; }
+    if(on('Эомер')) sw+=cav; if(on('Теодред')) sh+=cav;
+    if((on('Орофин')&&P(me).discard.some(i=>HEROES[P(me).f][i][0]==='Румил'))||(on('Румил')&&P(me).discard.some(i=>HEROES[P(me).f][i][0]==='Орофин'))){ sw+=1; sh+=1; }
+    if(on('Арведуи')&&G.palantir.indexOf(me)<G.palantir.indexOf(bp(o))){ sw+=1; sh+=1; }
+    if(on('Беорн')&&b.last[s]) sw+=2;
+    res[s]={units,order,walls:wallsV,support,card,extra,ring,sw,sh};
+    res[s].total=units+order+wallsV+support+card+extra+ring;
+  }
+  for(const s of ['a','d']) if(active(s,'Король чародей')){ res[s].sw+=res[OTH(s)].sh; res[OTH(s)].sh=0; }
+  return res;
+}
+function discardCard(side,c){ if(!c) return; const p=P(c.own); if(HEROES[c.f][c.i][0]==='Назгул'){ p.hand.push(c.i); if(p.hand.length===1&&p.discard.length){ p.hand=p.hand.concat(p.discard); p.discard=[]; } return; } if(HEROES[c.f][c.i][0]==='Балин'&&!G.battle.disabled[side]){ if(!p.hand.length){ p.hand=p.discard; p.discard=[]; } p.hand.push(c.i); return; } p.discard.push(c.i); }
+function trackUp(key,pi,steps){ const a=G[key]; let i=a.indexOf(pi); for(let k=0;k<steps&&i>0;k++,i--){ [a[i-1],a[i]]=[a[i],a[i-1]]; } }
+function battleResolve(){
+  const b=G.battle, r=battleCalc();
+  let tieA = ringRank(b.att)<ringRank(b.def);
+  if(active('a','Арагорн')) tieA=true; if(active('d','Арагорн')) tieA=false;
+  const attWins = r.a.total>r.d.total || (r.a.total===r.d.total && tieA);
+  const W=attWins?'a':'d', L=OTH(W);
+  let loss=Math.max(0,r[W].sw-r[L].sh); if(active(L,'Арвен')) loss=0;
+  b.res={attWins,W,L,ta:r.a.total,td:r.d.total,killed:0,lostFoot:0,before:sideUnits(L).length};
+  const victims=sideUnits(L);
+  loss=Math.min(loss,victims.length);
+  if(loss>0){ b.stage='kill'; b.ask={side:W,kind:'kill',n:loss}; return gate(bp(W),`Победа! Мечи: выберите ${loss} отряд(а) противника для уничтожения.`); }
+  resolve2();
+}
+function killAnswer(idx){
+  const b=G.battle, L=b.res.L; const list=sideUnits(L); const set=new Set(idx);
+  const dead=list.filter((_,i)=>set.has(i)); setSideUnits(L,list.filter((_,i)=>!set.has(i)));
+  b.res.killed=dead.length; b.res.lostFoot=dead.filter(u=>u==='п').length; b.ask=null; resolve2();
+}
+function resolve2(){
+  const b=G.battle, R=b.res, fA=P(b.att).f, fD=P(b.def).f;
+  if(R.attWins){
+    let surv=G.units[b.to].filter(u=>u!=='о');
+    if(active('d','Тауриэль')&&R.lostFoot>0&&surv.length<CAP) surv.push('п');
+    G.units[b.to]=[];
+    R.notes=[`Победа ${fA} в «${D.names[b.to]}» (${R.ta}:${R.td}). ${fD}: потери ${R.killed}.`];
+    const dests=retreatOptions(b.to,b.def,b.from);
+    G.bld[b.to]={}; G.units[b.to]=b.moving; G.arrived[b.to]=b.moving.length; G.owner[b.to]=b.att; G.orders[b.to]=null;
+    if(surv.length&&dests.length){ b.surv=surv; b.stage='retreat'; b.ask={side:'d',kind:'retreat',opts:dests,scatter:active('d','Гришнак')}; return gate(b.def,`Поражение. Куда отступают выжившие (${surv.map(u=>UNIT[u].name.toLowerCase()).join(', ')})?`); }
+    if(surv.length) R.notes.push('Отступать некуда — выжившие погибли.');
+  } else {
+    const surv=b.moving.filter(u=>u!=='о');
+    if(active('a','Тауриэль')&&R.lostFoot>0) surv.push('п');
+    const back=G.units[b.from].concat(surv); const fit=back.slice(0,CAP); G.units[b.from]=fit; if(fit.length) G.owner[b.from]=b.att; else leaveOrigin(b.from,b.att);
+    R.notes=[`${fD} отбивает атаку на «${D.names[b.to]}» (${R.ta}:${R.td}). ${fA}: потери ${R.killed}, войска вернулись в «${D.names[b.from]}».`];
+  }
+  resolve3();
+}
+function retreatAnswer(dest,perUnit){
+  const b=G.battle, R=b.res; let lost=0;
+  const place=(u,d)=>{ if(d!=null&&G.units[d].length<CAP){ G.units[d].push(u); G.owner[d]=b.def; } else lost++; };
+  if(perUnit) b.surv.forEach((u,i)=>place(u,perUnit[i])); else b.surv.forEach(u=>place(u,dest));
+  R.notes.push(`Отступление ${P(b.def).f}${dest!=null?` в «${D.names[dest]}»`:''}${lost?`, ${lost} отряд(а) не поместились и погибли`:''}.`);
+  b.surv=null; b.ask=null; resolve3();
+}
+function resolve3(){
+  const b=G.battle, R=b.res, W=R.W, L=R.L, notes=b.notes.concat(R.notes);
+  if(R.attWins&&active('d','Келеборн')){ const mv=G.units[b.to]; G.units[b.to]=[]; G.units[b.from]=G.units[b.from].concat(mv).slice(0,CAP); G.owner[b.from]=b.att; leaveOrigin(b.to,b.def); notes.push('Келеборн: армия победителя тоже отходит, территория остаётся пустой.'); }
+  const winP=bp(W), loseP=bp(L);
+  if(active(W,'Торин')){ trackUp('arken',winP,1); notes.push('Торин: +1 на треке Аркенстона.'); }
+  if(active(W,'Назгул всадник')){ trackUp('ring',winP,1); notes.push('Назгул всадник: +1 на треке Кольца.'); }
+  if(active(W,'Голлум')){ trackUp('ring',winP,99); notes.push('Голлум: вершина трека Кольца.'); }
+  if(active(W,'Исильдур')&&ringRank(loseP)<ringRank(winP)){ const a=G.ring, i=a.indexOf(winP), j=a.indexOf(loseP); [a[i],a[j]]=[a[j],a[i]]; notes.push('Исильдур занимает место противника на треке Кольца.'); }
+  if(active(L,'Исильдур')){ const a=G.ring; a.splice(a.indexOf(loseP),1); a.push(loseP); notes.push('Исильдур: в самый низ трека Кольца.'); }
+  if(active(W,'Суладан')){ P(winP).coins+=1; notes.push('Суладан: +1 монета.'); }
+  if(active(W,'Горкил')){ const n=Math.min(P(loseP).coins,R.before); P(loseP).coins-=n; P(winP).coins+=n; notes.push(`Горкил забирает ${n} монет.`); }
+  if(b.stolen){ const sc=b.stolen.card; if(W===b.stolen.side) P(sc.own).discard.push(sc.i); else P(sc.own).hand.push(sc.i); discardCard(b.stolen.side,b.grimaCard); discardCard(OTH(b.stolen.side),b.card[OTH(b.stolen.side)]); }
+  else { discardCard('a',b.card.a); discardCard('d',b.card.d); }
+  for(const pi of [b.att,b.def]){ const p=P(pi); if(!p.hand.length){ p.hand=p.discard; p.discard=[]; } }
+  for(const [n,side] of Object.entries(b.sup)){ if(active(side,'Глоин')) continue; G.orders[n]=null; }
+  if(b.ring) G.ringUsed=true;
+  log(notes.join(' '));
+  b.post=[];
+  if(active(W,'Гвайхир')&&G.owner[b.to]===winP&&G.units[b.to].length) b.post.push({side:W,kind:'gwaihir'});
+  for(const s of ['a','d']) if(active(s,'Ган-Бури-Ган')) b.post.push({side:s,kind:'ghan'});
+  nextPost();
+}
+function retreatOptions(t,pi,exclude){ return [...ADJ[t]].filter(n=>n!==exclude&&G.units[n].length<CAP&&(G.owner[n]===pi||(G.owner[n]===-1&&!G.units[n].length))); }
+function nextPost(){ const b=G.battle; if(b.post&&b.post.length){ const q=b.post[0]; b.stage='post'; b.ask=q; return gate(bp(q.side), q.kind==='gwaihir'?'Гвайхир: можно перенести войска с оспариваемой территории на любую свою территорию.':'Ган-Бури-Ган: можно переместить один свой отряд на соседнюю свободную или свою территорию.'); } endBattle(); }
+function postAnswer(v){
+  const b=G.battle, q=b.post.shift(), me=bp(q.side);
+  if(q.kind==='gwaihir'&&v!=null&&G.units[v].length+G.units[b.to].length<=CAP){ G.units[v]=G.units[v].concat(G.units[b.to]); G.units[b.to]=[]; leaveOrigin(b.to,me); log(`Гвайхир переносит войска в «${D.names[v]}».`); }
+  if(q.kind==='ghan'&&v){ const [from,to]=v; if(G.units[from].length&&G.units[to].length<CAP){ const u=G.units[from].pop(); G.units[to].push(u); G.owner[to]=me; leaveOrigin(from,me); log(`Ган-Бури-Ган: отряд перешёл в «${D.names[to]}».`); } }
+  nextPost();
+}
+function endBattle(){ const att=G.battle.att; G.battle=null; G.cur=att; checkElims(); if(G.phase==='over') return; afterAttackStep(); }
 </script>
 <script>// ===== Интерфейс v2 =====
 const NS='http://www.w3.org/2000/svg';
@@ -462,38 +630,50 @@ function renderPanel(){
   }
   if(!['build','plan','palantir'].includes(G.phase)&&focus!=null&&!G.battle) h+=terrInfo(focus);
   h+=playersBox();
-  h+=`<details><summary>Ручная правка (для свойств карт)</summary>${editBox()}</details>`;
   h+=`<details><summary>Журнал</summary><div class="log">${G.log.slice().reverse().map(esc).join('<br>')}</div></details>`;
   h+=`<details><summary>Правила кратко</summary>${RULES}</details>`;
   h+=`<p>`+btn('Новая игра',"if(confirm('Начать новую игру? Текущая будет удалена.'))resetGame()")+`</p>`;
   panel.innerHTML=h;
 }
+function cardHtml(c,click){ return `<div class="card" ${click?`onclick="${click}"`:''}><div class="cs">${c[1]}</div><b>${esc(c[0])}</b><div>${'🗡'.repeat(c[2])}${'🛡'.repeat(c[3])}</div><small>${esc(c[4])}</small></div>`; }
 function battlePanel(ro){
-  const b=G.battle;
-  if(b.stage==='support'){ const n=b.supQ[0]; return `<h3>Поддержка из «${esc(D.names[n])}»</h3><p>${esc(P(b.att).f)} атакует ${esc(P(b.def).f)} в «${esc(D.names[b.to])}».</p><div class="ob">`+btn('За '+esc(P(b.att).f),"supportChoose('a');render()")+btn('За '+esc(P(b.def).f),"supportChoose('d');render()")+btn('Никого','supportChoose(null);render()')+`</div>`; }
-  if(b.stage==='cardA'||b.stage==='cardD'){ const pi=b.stage==='cardA'?b.att:b.def, p=P(pi), H=HEROES[p.f];
-    return `<h3>${esc(p.f)}: выберите героя</h3><p>Бой за «${esc(D.names[b.to])}».</p><div class="cards">`+p.hand.map(i=>{ const c=H[i]; return `<div class="card" onclick="pickCard(${i});render()"><div class="cs">${c[1]}</div><b>${esc(c[0])}</b><div>${'🗡'.repeat(c[2])}${'🛡'.repeat(c[3])}</div><small>${esc(c[4])}</small></div>`; }).join('')+`</div><p><small>Сброс: ${p.discard.map(i=>esc(H[i][0])).join(', ')||'—'}</small></p>`; }
+  const b=G.battle, me=NET.on?myIndex():G.cur;
+  const head=`<h3>Бой за «${esc(D.names[b.to])}»</h3><p>${esc(P(b.att).f)} атакует ${esc(P(b.def).f)}.</p>`;
+  if(b.stage==='support'){ const n=b.supQ[0]; return head+`<p>Поддержка из «${esc(D.names[n])}»:</p><div class="ob">`+btn('За '+esc(P(b.att).f),"supportChoose('a');render()")+btn('За '+esc(P(b.def).f),"supportChoose('d');render()")+btn('Никого','supportChoose(null);render()')+`</div>`; }
+  if(b.stage==='cardA'||b.stage==='cardD'||b.stage==='repick'){ const pi=b.stage==='cardA'?b.att:b.stage==='cardD'?b.def:bp(b.repickSide); const p=P(pi), H=HEROES[p.f];
+    return head+`<h4>${esc(p.f)}: выберите героя</h4><div class="cards">`+p.hand.map(i=>cardHtml(H[i],`pickCard(${i});render()`)).join('')+`</div><p><small>Сброс: ${p.discard.map(i=>esc(H[i][0])).join(', ')||'—'}</small></p>`; }
+  if(b.stage==='choice'){ const a=b.ask, pi=bp(a.side), p=P(pi), H=HEROES[p.f], o=OTH(a.side);
+    let h=head+`<h4>${esc(a.msg)}</h4>`;
+    const skip=btn('Не использовать','answer(null);render()');
+    if(a.kind==='erestor') h+=`<div class="cards">`+p.hand.map(i=>cardHtml(H[i],`answer(${i});render()`)).join('')+`</div>`+btn('Оставить Эрестора','answer(null);render()');
+    if(a.kind==='undulus') h+=`<div class="cards">`+p.discard.map(i=>cardHtml(H[i],`answer(${i});render()`)).join('')+`</div>`+skip;
+    if(a.kind==='balin') h+=`<div class="cards">`+p.discard.map(i=>cardHtml(H[i],`answer(${i});render()`)).join('')+`</div>`+skip;
+    if(a.kind==='alatar'){ const ep=P(bp(o)), EH=HEROES[ep.f]; h+=`<div class="cards">`+ep.hand.map(i=>cardHtml(EH[i],`answer(${i});render()`)).join('')+`</div>`; }
+    if(a.kind==='thranduil'){ const used=usedOrders(pi); h+=`<div class="ob">`+Object.keys(ORD).filter(k=>!used.has(k)).map(k=>btn(ORD[k].label,`answer('${k}');render()`)).join('')+skip+`</div>`; }
+    if(a.kind==='malbeth'||a.kind==='grobok') h+=`<div class="ob">`+a.opts.map(t=>btn(esc(D.names[t])+(a.kind==='malbeth'?' · '+ORD[G.orders[t].k].label:''),`answer(${t});render()`)).join('')+skip+`</div>`;
+    if(a.kind==='drogot'||a.kind==='gulmatar') h+=`<input id="numv" type="number" min="0" value="0">`+btn('Готово',"answer(+document.getElementById('numv').value);render()",false,'main');
+    if(a.kind==='saleme') h+=`<div class="ob">`+a.opts.map(([u,i])=>btn(UNIT[u].name+' — '+UNIT[u].str+'🪙',`answer(${i});render()`)).join('')+skip+`</div>`;
+    return h; }
+  if(b.stage==='kill'){ const L=b.res.L, list=sideUnits(L); return head+`<h4>Выберите ${b.ask.n} отряд(а) противника для уничтожения</h4>`+list.map((u,i)=>`<label class="ck"><input type="checkbox" class="kv" value="${i}">${UNIT[u].name}</label>`).join('')+btn('Уничтожить',`const v=[...document.querySelectorAll('.kv:checked')].map(x=>+x.value); if(v.length!==${b.ask.n}){alert('Выберите ровно ${b.ask.n}');} else {killAnswer(v);render();}`,false,'main'); }
+  if(b.stage==='retreat'){ const a=b.ask;
+    if(a.scatter) return head+`<h4>Гришнак: каждый отряд может отступить отдельно</h4>`+b.surv.map((u,i)=>`<p>${UNIT[u].name}: <select class="rv">${a.opts.map(t=>`<option value="${t}">${esc(D.names[t])}</option>`).join('')}</select></p>`).join('')+btn('Отступить',"retreatAnswer(null,[...document.querySelectorAll('.rv')].map(x=>+x.value));render()",false,'main');
+    return head+`<h4>Куда отступают выжившие?</h4><div class="ob">`+a.opts.map(t=>btn(esc(D.names[t])+(G.owner[t]===-1?' (свободная)':''),`retreatAnswer(${t});render()`)).join('')+`</div>`; }
+  if(b.stage==='post'){ const a=b.ask, pi=bp(a.side); let h=head;
+    if(a.kind==='gwaihir'){ const opts=[]; for(let t=0;t<N;t++) if(t!==b.to&&G.owner[t]===pi&&G.units[t].length+G.units[b.to].length<=CAP) opts.push(t); h+=`<h4>Гвайхир: перенести войска на свою территорию?</h4><div class="ob">`+opts.map(t=>btn(esc(D.names[t]),`postAnswer(${t});render()`)).join('')+btn('Остаться','postAnswer(null);render()')+`</div>`; }
+    if(a.kind==='ghan'){ const opts=[]; for(let f=0;f<N;f++) if(G.owner[f]===pi&&G.units[f].length) for(const t of ADJ[f]) if(G.units[t].length<CAP&&(G.owner[t]===pi||(G.owner[t]===-1&&!G.units[t].length))) opts.push([f,t]); h+=`<h4>Ган-Бури-Ган: переместить один отряд?</h4><select id="ghv">${opts.map(([f,t],i)=>`<option value="${i}">${esc(D.names[f])} → ${esc(D.names[t])}</option>`).join('')}</select>`+btn('Переместить',`const o=${JSON.stringify(opts)}[+document.getElementById('ghv').value]; postAnswer(o);render()`,false,'main')+btn('Пропустить','postAnswer(null);render()'); }
+    return h; }
+  // reveal
   const r=battleCalc(), fA=P(b.att).f, fD=P(b.def).f;
   const row=(l,a,d)=>`<tr><td>${l}</td><td>${a}</td><td>${d}</td></tr>`;
-  const pm=(key,v)=>`<button onclick="G.battle.adj.${key}--;render()">−</button>${v}<button onclick="G.battle.adj.${key}++;render()">+</button>`;
-  const rt=G.ring.find(i=>P(i).alive); const canRing=!G.ringUsed&&!b.ring&&(rt===b.att||rt===b.def)&&(!NET.on||myIndex()===rt);
-  return `<h3>Бой за «${esc(D.names[b.to])}»</h3><table class="bt"><tr><th></th><th style="color:${fc(b.att)}">${esc(fA)}</th><th style="color:${fc(b.def)}">${esc(fD)}</th></tr>
-  ${row('Войска',r.A.units,r.Dd.units)}${row('Приказ',r.A.order,r.Dd.order)}${row(G.units[b.to].length?'Замок / крепость':'Пустая территория','',r.Dd.walls)}${row('Поддержка',r.A.support,r.Dd.support)}${row('Герой',r.A.card,r.Dd.card)}${row('Кольцо',r.A.ring,r.Dd.ring)}${row('Правка силы',pm('a',r.A.adj),pm('d',r.Dd.adj))}
-  <tr class="tot"><td>Итого</td><td>${r.totA}</td><td>${r.totD}</td></tr>${row('Мечи 🗡',pm('as',r.swA),pm('ds',r.swD))}${row('Щиты 🛡',pm('ash',r.shA),pm('dsh',r.shD))}</table>
-  <div class="cards two"><div class="card"><div class="cs">${r.cA[1]}</div><b>${esc(r.cA[0])}</b><small>${esc(r.cA[4])}</small></div><div class="card"><div class="cs">${r.cD[1]}</div><b>${esc(r.cD[0])}</b><small>${esc(r.cD[4])}</small></div></div>
-  <p><small>Свойства героев применяйте кнопками правки. Если свойства спорят, первым действует тот, кто выше на треке Палантира. При равенстве сил побеждает тот, кто выше на треке Кольца.</small></p>
-  ${(ro&&!canRing)?'':(canRing?btn(`Использовать Кольцо (+1, ${esc(P(rt).f)})`,`G.battle.ring='${rt===b.att?'a':'d'}';render()`):'')}
-  <div class="ob">${(NET.on&&myIndex()!==b.att)?'<small>Бой завершает атакующий</small>':btn('Завершить бой','battleResolve();render()',false,'main')}</div>`;
-}
-function editBox(){
-  if(focus==null) return '<p>Нажмите на территорию на карте.</p>';
-  const t=focus, o=G.owner[t];
-  return `<div class="ti"><b>${esc(D.names[t])}</b></div><label>Владелец: <select onchange="G.owner[${t}]=+this.value;render()"><option value="-1">ничья</option>${G.players.map((p,i)=>`<option value="${i}" ${o===i?'selected':''}>${esc(p.f)}</option>`).join('')}</select></label>
-  <div class="ob">${Object.keys(UNIT).map(u=>btn('+ '+UNIT[u].name,`if(G.units[${t}].length<CAP)G.units[${t}].push('${u}');render()`)+btn('− '+UNIT[u].name,`const i=G.units[${t}].indexOf('${u}');if(i>=0)G.units[${t}].splice(i,1);render()`)).join('')}</div>
-  <div class="ob">${[['mine','шахта'],['barracks','казарма'],['fort','крепость']].map(([k,n])=>btn((G.bld[t][k]?'Убрать ':'Поставить ')+n,`if(G.bld[${t}].${k})delete G.bld[${t}].${k};else G.bld[${t}].${k}=true;render()`)).join('')}${btn('Снять приказ',`G.orders[${t}]=null;render()`)}</div>
-  <div class="ob">${G.players.map((p,i)=>`<span class="cn"><span class="fdot" style="background:${fc(i)}"></span>🪙<button onclick="P(${i}).coins=Math.max(0,P(${i}).coins-1);render()">−</button>${p.coins}<button onclick="P(${i}).coins++;render()">+</button></span>`).join('')}</div>
-  <p><small>Треки (сверху — первое место). ↑ поднимает фракцию.</small></p>
-  ${[['arken','Аркенстон'],['palantir','Палантир'],['ring','Кольцо']].map(([k,nm])=>`<div class="trk"><b>${nm}:</b> ${G[k].map((pi,j)=>`<span><span class="fdot" style="background:${fc(pi)}"></span>${esc(P(pi).f)}${j?`<button onclick="const a=G['${k}'];[a[${j-1}],a[${j}]]=[a[${j}],a[${j-1}]];render()">↑</button>`:''}</span>`).join(' ')}</div>`).join('')}`;
+  const rt=G.ring.find(i=>P(i).alive); const canRing=!G.ringUsed&&!b.ring&&(rt===b.att||rt===b.def)&&(!NET.on||me===rt);
+  return head+`<table class="bt"><tr><th></th><th style="color:${fc(b.att)}">${esc(fA)}</th><th style="color:${fc(b.def)}">${esc(fD)}</th></tr>
+  ${row('Войска',r.a.units,r.d.units)}${row('Приказ',r.a.order,r.d.order)}${row(G.units[b.to].length?'Замок / крепость':'Пустая территория','',r.d.walls)}${row('Поддержка',r.a.support,r.d.support)}${row('Герой',r.a.card,r.d.card)}${(r.a.extra||r.d.extra)?row('Свойства героев',r.a.extra,r.d.extra):''}${row('Кольцо',r.a.ring,r.d.ring)}
+  <tr class="tot"><td>Итого</td><td>${r.a.total}</td><td>${r.d.total}</td></tr>${row('Мечи 🗡',r.a.sw,r.d.sw)}${row('Щиты 🛡',r.a.sh,r.d.sh)}</table>
+  <div class="cards two">${cardOf('a')?cardHtml(cardOf('a')):''}${cardOf('d')?cardHtml(cardOf('d')):''}</div>
+  ${b.notes.length?`<p><small>${b.notes.map(esc).join('<br>')}</small></p>`:''}
+  <p><small>Мечи не добавляют силу: победитель уничтожает столько отрядов, сколько у него мечей минус щиты проигравшего. При равенстве сил побеждает тот, кто выше на треке Кольца.</small></p>
+  ${canRing?btn(`Использовать Кольцо (+1, ${esc(P(rt).f)})`,`G.battle.ring='${rt===b.att?'a':'d'}';render()`):''}
+  <div class="ob">${(NET.on&&me!==b.att)?'<small>Бой завершает атакующий</small>':btn('Завершить бой','battleResolve();render()',false,'main')}</div>`;
 }
 function renderSetup(){
   const saved=lsGet('ring_room'), role=lsGet('ring_role');
@@ -532,7 +712,7 @@ const RULES=`<ol class="rules">
 <li><b>Ход.</b> Войска идут только в соседнюю территорию и только на один шаг за раунд: отряд, который уже пришёл в этом раунде, дальше не идёт.</li>
 <li><b>Приказы.</b> 7 штук, каждый один раз: атака +1, 0, −1; защита +2, +1; поддержка +1, 0. Ставятся на свои территории.</li>
 <li><b>Палантир.</b> Первый на треке после раскрытия может заменить один свой приказ. Его свойства карт действуют первыми.</li>
-<li><b>Бой.</b> Сила = войска + приказ + замок/крепость (+3, у обороны) + поддержка + герой. Мечи победителя убивают, щиты проигравшего защищают. Проигравший отступает: защитник — в соседнюю свою или пустую территорию, атакующий — назад. Осадные орудия не отступают. Постройки проигравшего защитника разрушаются.</li>
+<li><b>Бой.</b> Сила = войска + приказ + замок/крепость (+3, у обороны) + поддержка + герой. Мечи и щиты силу не добавляют. Победитель уничтожает столько отрядов проигравшего, сколько у него мечей минус щиты проигравшего, и сам выбирает, какие. Выжившие защитники отступают туда, куда выберет их хозяин: в соседнюю свою или свободную территорию; если некуда — погибают. Атакующий при поражении возвращается назад. Осадные орудия не отступают. Свойства героев игра применяет сама.</li>
 <li><b>Пустая территория.</b> Если на своей территории нет войск, при атаке она защищается силой 1, а если там замок или крепость — силой 3.</li>
 <li><b>Кольцо.</b> При равенстве сил побеждает тот, кто выше на треке Кольца. Первый на треке раз за фазу может добавить +1.</li>
 <li><b>Контроль.</b> Ушли все войска — территория ничья, если на ней нет ваших построек. Родовая земля всегда остаётся за своей фракцией: даже пустую её можно взять только боем, а если захватчик уйдёт из неё, она вернётся владельцу.</li></ol>`;
