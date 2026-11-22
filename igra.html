@@ -312,7 +312,6 @@ function killN(list,k){ list=[...list]; const order=['о','п','к','э']; for(l
 function battleResolve(){
   const b=G.battle, r=battleCalc(), fA=P(b.att).f, fD=P(b.def).f;
   let attWins = r.totA>r.totD || (r.totA===r.totD && G.ring.indexOf(b.att)<G.ring.indexOf(b.def));
-  if(b.forceWin) attWins=b.forceWin==='a';
   if(attWins){
     const loss=Math.max(0,r.swA-r.shD);
     const before=G.units[b.to].length; let surv=killN(G.units[b.to],loss); const killed=before-surv.length;
@@ -477,14 +476,14 @@ function battlePanel(ro){
   const r=battleCalc(), fA=P(b.att).f, fD=P(b.def).f;
   const row=(l,a,d)=>`<tr><td>${l}</td><td>${a}</td><td>${d}</td></tr>`;
   const pm=(key,v)=>`<button onclick="G.battle.adj.${key}--;render()">−</button>${v}<button onclick="G.battle.adj.${key}++;render()">+</button>`;
-  const rt=G.ring.find(i=>P(i).alive); const canRing=!G.ringUsed&&!b.ring&&(rt===b.att||rt===b.def);
+  const rt=G.ring.find(i=>P(i).alive); const canRing=!G.ringUsed&&!b.ring&&(rt===b.att||rt===b.def)&&(!NET.on||myIndex()===rt);
   return `<h3>Бой за «${esc(D.names[b.to])}»</h3><table class="bt"><tr><th></th><th style="color:${fc(b.att)}">${esc(fA)}</th><th style="color:${fc(b.def)}">${esc(fD)}</th></tr>
   ${row('Войска',r.A.units,r.Dd.units)}${row('Приказ',r.A.order,r.Dd.order)}${row(G.units[b.to].length?'Замок / крепость':'Пустая территория','',r.Dd.walls)}${row('Поддержка',r.A.support,r.Dd.support)}${row('Герой',r.A.card,r.Dd.card)}${row('Кольцо',r.A.ring,r.Dd.ring)}${row('Правка силы',pm('a',r.A.adj),pm('d',r.Dd.adj))}
   <tr class="tot"><td>Итого</td><td>${r.totA}</td><td>${r.totD}</td></tr>${row('Мечи 🗡',pm('as',r.swA),pm('ds',r.swD))}${row('Щиты 🛡',pm('ash',r.shA),pm('dsh',r.shD))}</table>
   <div class="cards two"><div class="card"><div class="cs">${r.cA[1]}</div><b>${esc(r.cA[0])}</b><small>${esc(r.cA[4])}</small></div><div class="card"><div class="cs">${r.cD[1]}</div><b>${esc(r.cD[0])}</b><small>${esc(r.cD[4])}</small></div></div>
   <p><small>Свойства героев применяйте кнопками правки. Если свойства спорят, первым действует тот, кто выше на треке Палантира. При равенстве сил побеждает тот, кто выше на треке Кольца.</small></p>
-  ${ro?'':(canRing?btn(`Использовать Кольцо (+1, ${esc(P(rt).f)})`,`G.battle.ring='${rt===b.att?'a':'d'}';render()`):'')}
-  <div class="ob"><select onchange="G.battle.forceWin=this.value||null"><option value="">Победитель по силе</option><option value="a">Принудительно: ${esc(fA)}</option><option value="d">Принудительно: ${esc(fD)}</option></select>${(NET.on&&myIndex()!==b.att)?'<small>Бой завершает атакующий</small>':btn('Завершить бой','battleResolve();render()',false,'main')}</div>`;
+  ${(ro&&!canRing)?'':(canRing?btn(`Использовать Кольцо (+1, ${esc(P(rt).f)})`,`G.battle.ring='${rt===b.att?'a':'d'}';render()`):'')}
+  <div class="ob">${(NET.on&&myIndex()!==b.att)?'<small>Бой завершает атакующий</small>':btn('Завершить бой','battleResolve();render()',false,'main')}</div>`;
 }
 function editBox(){
   if(focus==null) return '<p>Нажмите на территорию на карте.</p>';
