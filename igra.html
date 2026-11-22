@@ -250,28 +250,31 @@ function setOrder(t,k){ const pi=G.cur; if(G.owner[t]!==pi||!(G.units[t].length|
 function palantirDone(){ startAttacks(); }
 
 // ===== Фаза приказов (атаки) =====
-function startAttacks(){ G.phase='attack'; G.ringUsed=false; G.idx=0; nextAttacker(); }
+function startAttacks(){ G.phase='attack'; G.arrived={}; G.ringUsed=false; G.idx=0; nextAttacker(); }
 function attacksLeft(pi){ return G.orders.some((o,t)=>o&&o.p===pi&&ORD[o.k].t==='A'); }
 function nextAttacker(){
   const list=alivePlayers();
   while(G.idx<list.length){ const pi=list[G.idx]; if(attacksLeft(pi)){ G.sel={stage:'from'}; return gate(pi,'Приказы: выполните свои приказы атаки.'); } G.idx++; }
   endRound();
 }
-function attackPickFrom(t){ const o=G.orders[t]; if(!o||o.p!==G.cur||ORD[o.k].t!=='A') return; G.sel={stage:'to',from:t,k:o.k,take:G.units[t].map(()=>true)}; }
+function movable(t){ const a=(G.arrived&&G.arrived[t])||0; return Math.max(0,G.units[t].length-a); }
+function attackPickFrom(t){ const o=G.orders[t]; if(!o||o.p!==G.cur||ORD[o.k].t!=='A') return; const m=movable(t); G.sel={stage:'to',from:t,k:o.k,take:G.units[t].map((_,i)=>i<m)}; }
 function attackPickTo(t){ if(!ADJ[G.sel.from].has(t)) return; G.sel.to=t; G.sel.stage='units'; }
 function afterAttackStep(){ if(attacksLeft(G.cur)){ G.sel={stage:'from'}; } else { G.sel=null; G.idx++; nextAttacker(); } }
 function attackCancelOrder(){ G.orders[G.sel.from]=null; log(`${P(G.cur).f} снимает приказ атаки в «${D.names[G.sel.from]}».`); afterAttackStep(); }
 function leaveOrigin(from,pi){ if(!G.units[from].length){ if(hasBuildings(from)) G.owner[from]=pi; else { G.owner[from]=-1; } G.orders[from]=null; } }
 function attackGo(){
   const s=G.sel, from=s.from, to=s.to, pi=G.cur;
+  const m=movable(from); s.take=s.take.map((v,i)=>v&&i<m);
   const moving=G.units[from].filter((_,i)=>s.take[i]), staying=G.units[from].filter((_,i)=>!s.take[i]);
+  if(G.arrived&&G.arrived[from]) G.arrived[from]=Math.min(G.arrived[from],staying.length);
   if(!moving.length) return 'Выберите хотя бы один отряд';
   const def=G.owner[to];
   const enemy = def!==-1 && def!==pi && (G.units[to].length || hasBuildings(to));
   if(!enemy){
     const total=(def===pi?G.units[to]:[]).concat(moving);
     if(total.length>CAP) return 'На территории может быть не больше '+CAP+' отрядов';
-    G.orders[from]=null; G.units[from]=staying; G.units[to]=total;
+    G.orders[from]=null; G.units[from]=staying; G.units[to]=total; G.arrived[to]=((def===pi&&G.arrived[to])||0)+moving.length;
     if(def!==-1&&def!==pi) log(`${P(pi).f} занимает «${D.names[to]}».`); else log(`${P(pi).f}: поход «${D.names[from]}» → «${D.names[to]}».`);
     if(def!==pi && G.orders[to]) G.orders[to]=null;
     G.owner[to]=pi; leaveOrigin(from,pi); afterAttackStep(); return null;
@@ -316,7 +319,7 @@ function battleResolve(){
     let dest=null;
     if(surv.length){ dest=[...ADJ[b.to]].find(n=>n!==b.from && G.owner[n]===b.def && G.units[n].length+surv.length<=CAP) ?? [...ADJ[b.to]].find(n=>n!==b.from && G.owner[n]===-1 && !G.units[n].length); if(dest!=null){ G.units[dest]=G.units[dest].concat(surv); G.owner[dest]=b.def; } }
     const lostB=hasBuildings(b.to); G.bld[b.to]={};
-    G.units[b.to]=b.moving; G.owner[b.to]=b.att; if(G.orders[b.to]) G.orders[b.to]=null;
+    G.units[b.to]=b.moving; G.arrived[b.to]=b.moving.length; G.owner[b.to]=b.att; if(G.orders[b.to]) G.orders[b.to]=null;
     log(`Победа ${fA} (${r.totA}:${r.totD}) в «${D.names[b.to]}». ${fD}: потери ${killed}${surv.length?(dest!=null?`, отступление в «${D.names[dest]}»`:', отступать некуда — отряды уничтожены'):''}${lostB?', постройки разрушены':''}.`);
   } else {
     const loss=Math.max(0,r.swD-r.shA);
@@ -450,9 +453,10 @@ function renderPanel(){
   }
   else if(G.phase==='attack'&&G.battle){ h+=battlePanel(); }
   else if(G.phase==='attack'&&G.sel){ const sl=G.sel;
-    if(sl.stage==='from') h+=`<p>Выберите на карте свою территорию с приказом атаки (подсвечены).</p>`;
+    const atk=[]; for(let t=0;t<N;t++){ const o=G.orders[t]; if(o&&o.p===pi&&ORD[o.k].t==='A') atk.push(t); }
+    h+=`<p><b>Откуда атаковать сейчас?</b> Выберите территорию кнопкой или на карте.</p><div class="ob">`+atk.map(t=>btn(esc(D.names[t])+' · '+ORD[G.orders[t].k].label+(movable(t)?'':' (нет свободных войск)'),`attackPickFrom(${t});focus=${t};render()`,false,sl.from===t?'on':'')).join('')+`</div>`;
     if(sl.stage==='to') h+=`<p>Атака из «${esc(D.names[sl.from])}» (${ORD[sl.k].label}). Выберите соседнюю территорию.</p>`+btn('Снять приказ без атаки','attackCancelOrder();render()');
-    if(sl.stage==='units'){ const o=G.owner[sl.to]; h+=`<p><b>${esc(D.names[sl.from])} → ${esc(D.names[sl.to])}</b>${o>=0&&o!==pi?` (${esc(P(o).f)})`:''}</p><p>Какие отряды идут:</p>`+G.units[sl.from].map((u,i)=>`<label class="ck"><input type="checkbox" ${sl.take[i]?'checked':''} onchange="G.sel.take[${i}]=this.checked">${UNIT[u].name}</label>`).join('')+
+    if(sl.stage==='units'){ const o=G.owner[sl.to]; h+=`<p><b>${esc(D.names[sl.from])} → ${esc(D.names[sl.to])}</b>${o>=0&&o!==pi?` (${esc(P(o).f)})`:''}</p><p>Какие отряды идут:</p>`+G.units[sl.from].map((u,i)=>i<movable(sl.from)?`<label class="ck"><input type="checkbox" ${sl.take[i]?'checked':''} onchange="G.sel.take[${i}]=this.checked">${UNIT[u].name}</label>`:`<label class="ck" style="opacity:.5"><input type="checkbox" disabled>${UNIT[u].name} — уже ходил в этом раунде</label>`).join('')+
       (G.sel.take.every(x=>x)&&!hasBuildings(sl.from)?`<p><small>Если уйдут все, «${esc(D.names[sl.from])}» станет ничьей.</small></p>`:'')+
       `<div class="ob">`+btn('В поход',"msg=attackGo()||'';render()",false,'main')+btn('Другая цель',"G.sel.stage='to';render()")+`</div>`; }
   }
@@ -525,6 +529,7 @@ const RULES=`<ol class="rules">
 <li><b>Указы.</b> Во владычество каждый делает до 5 действий (первый на Аркенстоне — до 6): найм, улучшение, стройка, роспуск отряда (бесплатно), разрушение крепости.</li>
 <li><b>Найм и улучшение</b> — только в замке, крепости или где есть казарма: пехота 1, осадное 1, пехота → кавалерия 1, кавалерия → элита 1.</li>
 <li><b>Постройки.</b> Шахта 1, казарма 1 — не там, где замок или крепость. Крепость 3, одна на фракцию, не на замке. Замок и крепость: +3 к обороне, заменяют шахту и казарму.</li>
+<li><b>Ход.</b> Войска идут только в соседнюю территорию и только на один шаг за раунд: отряд, который уже пришёл в этом раунде, дальше не идёт.</li>
 <li><b>Приказы.</b> 7 штук, каждый один раз: атака +1, 0, −1; защита +2, +1; поддержка +1, 0. Ставятся на свои территории.</li>
 <li><b>Палантир.</b> Первый на треке после раскрытия может заменить один свой приказ. Его свойства карт действуют первыми.</li>
 <li><b>Бой.</b> Сила = войска + приказ + замок/крепость (+3, у обороны) + поддержка + герой. Мечи победителя убивают, щиты проигравшего защищают. Проигравший отступает: защитник — в соседнюю свою или пустую территорию, атакующий — назад. Осадные орудия не отступают. Постройки проигравшего защитника разрушаются.</li>
