@@ -84,6 +84,7 @@ function hostRoom(room){
   if(typeof Peer==='undefined'){ NET.status='Не загрузилась сетевая библиотека. Проверьте интернет и обновите страницу.'; renderAny(); return; }
   NET.peer=new Peer(PEER_PREFIX+NET.room);
   NET.peer.on('open',()=>{ NET.status='Комната открыта'; renderAny(); });
+  NET.peer.on('disconnected',()=>{ NET.status='Переподключение к серверу…'; renderAny(); setTimeout(()=>{ try{ NET.peer.reconnect(); }catch(e){} },1500); });
   NET.peer.on('error',e=>{ if(e.type==='unavailable-id'){ NET.status='Код занят, повтор через 5 с…'; renderAny(); setTimeout(()=>{ try{NET.peer.destroy();}catch(_){} hostRoom(NET.room); },5000); } else { NET.status='Ошибка сети: '+e.type; renderAny(); } });
   NET.peer.on('connection',c=>{ NET.conns.push(c);
     c.on('open',()=>{ c.send(JSON.stringify(G?{t:'state',G}:{t:'lobby',L:NET.lobby})); });
@@ -93,6 +94,7 @@ function hostRoom(room){
         L.players=L.players.filter((p,i,a)=>a.findIndex(q=>q.f===p.f)===i); netSend({t:'lobby',L}); renderAny(); }
       else if(m.t==='leave'&&!G){ NET.lobby.players=NET.lobby.players.filter(p=>p.tok!==m.tok); netSend({t:'lobby',L:NET.lobby}); renderAny(); }
       else if(m.t==='state'&&m.G&&(!G||(m.G.v||0)>=(G.v||0))){ G=m.G; NET.last=JSON.stringify(G); save(); netSend({t:'state',G}); renderAny(); }
+      else if(m.t==='v'&&G){ if((G.v||0)>(m.v||0)) c.send(JSON.stringify({t:'state',G})); else if((m.v||0)>(G.v||0)) c.send(JSON.stringify({t:'need'})); }
     });
     c.on('close',()=>{ NET.conns=NET.conns.filter(x=>x!==c); });
   });
@@ -109,9 +111,10 @@ function joinRoom(room){
   if(typeof Peer==='undefined'){ NET.status='Не загрузилась сетевая библиотека. Проверьте интернет и обновите страницу.'; renderAny(); return; }
   NET.peer=new Peer();
   NET.peer.on('open',()=>{ const c=NET.peer.connect(PEER_PREFIX+room,{reliable:true}); NET.hostConn=c;
-    c.on('open',()=>{ NET.status='Подключено'; const j=lsGet('ring_join'); if(j&&!G){ try{ const o=JSON.parse(j); c.send(JSON.stringify({t:'join',tok:NET.tok,name:o.name,f:o.f})); }catch(e){} } renderAny(); });
+    c.on('open',()=>{ NET.status='Подключено'; if(G) c.send(JSON.stringify({t:'v',v:G.v||0})); const j=lsGet('ring_join'); if(j&&!G){ try{ const o=JSON.parse(j); c.send(JSON.stringify({t:'join',tok:NET.tok,name:o.name,f:o.f})); }catch(e){} } renderAny(); });
     c.on('data',d=>{ let m; try{ m=JSON.parse(d); }catch(e){ return; }
       if(m.t==='lobby'){ NET.lobby=m.L; renderAny(); }
+      else if(m.t==='need'&&G){ c.send(JSON.stringify({t:'state',G})); }
       else if(m.t==='state'&&m.G&&(!G||(m.G.v||0)>=(G.v||0))){ G=m.G; NET.last=JSON.stringify(G); save(); renderAny(); } });
     c.on('close',()=>{ NET.status='Связь с хостом потеряна. Переподключение…'; renderAny(); setTimeout(()=>joinRoom(room),4000); });
   });
@@ -119,6 +122,10 @@ function joinRoom(room){
 }
 function guestJoin(name,f){ lsSet('ring_join',JSON.stringify({name,f})); if(NET.hostConn&&NET.hostConn.open) NET.hostConn.send(JSON.stringify({t:'join',tok:NET.tok,name,f})); }
 function leaveOnline(){ try{ NET.peer&&NET.peer.destroy(); }catch(e){} ['ring_room','ring_role','ring_join'].forEach(k=>{ try{localStorage.removeItem(k);}catch(e){} }); location.hash=''; location.reload(); }
+
+// проверка синхронизации каждые 5 секунд: у кого версия новее, тот и прав
+setInterval(()=>{ if(NET.on&&!NET.host&&G&&NET.hostConn&&NET.hostConn.open){ try{ NET.hostConn.send(JSON.stringify({t:'v',v:G.v||0})); }catch(e){} } },5000);
+function netResync(){ if(!NET.on||!G) return; if(NET.host) netSend({t:'state',G}); else if(NET.hostConn&&NET.hostConn.open) NET.hostConn.send(JSON.stringify({t:'state',G})); NET.status='Синхронизация отправлена'; renderAny(); }
 </script>
 <script>// ===== Игра Кольца v2 — движок по правилам автора (hot-seat) =====
 const D = window.GAMEDATA;
@@ -316,6 +323,7 @@ function newBattle(from,to,att,def,moving,ok){
 function nextSupport(){
   const b=G.battle;
   if(b.supQ.length){ const n=b.supQ[0]; return gate(G.orders[n].p,`Поддержка из «${D.names[n]}»: кого поддержать в бою за «${D.names[b.to]}»?`); }
+  for(const pi of [b.att,b.def]){ const p=P(pi); if(!p.hand.length){ p.hand=p.discard; p.discard=[]; } }
   b.stage='cardA'; gate(b.att,'Бой: выберите карту героя (атака).');
 }
 function supportChoose(side){ const b=G.battle; const n=b.supQ.shift(); if(side) b.sup[n]=side; nextSupport(); }
@@ -383,6 +391,7 @@ function finishCancelled(){
   const back=G.units[b.from].concat(b.moving).slice(0,CAP); G.units[b.from]=back; if(back.length) G.owner[b.from]=b.att;
   const pa=P(b.att); pa.hand.push(b.card.a.i); // атакующий не теряет карту
   discardCard('d',b.card.d);
+  for(const pi of [b.att,b.def]){ const p=P(pi); if(!p.hand.length){ p.hand=p.discard; p.discard=[]; } }
   log(b.notes.join(' ')+` Атака ${pa.f} на «${D.names[b.to]}» отменена.`);
   endBattle();
 }
@@ -593,7 +602,7 @@ function renderPanel(){
   let h=msg?`<div class="msg">${esc(msg)}</div>`:'';
   const pi=G.cur;
   const waiting = NET.on && G.phase!=='over' && (G.gate ? G.gate.pi!==myIndex() : pi!==myIndex()) && !(G.battle&&G.battle.stage==='reveal'&&myIndex()===G.battle.def);
-  if(NET.on) h+=`<div class="net">Комната <b>${NET.room}</b> · ${esc(NET.status)}</div>`;
+  if(NET.on) h+=`<div class="net">Комната <b>${NET.room}</b> · ${esc(NET.status)} <button onclick="netResync()" style="padding:2px 6px;font-size:11px">Синхронизировать</button></div>`;
   if(G.phase==='over'){ h+=`<h3>Победа: ${esc(P(G.winner).f)}</h3>`; }
   else if(waiting){ const w=G.gate?G.gate.pi:pi; h+=`<p class="wait">Ходит <span class="fdot" style="background:${fc(w)}"></span><b>${esc(P(w).f)}</b>${P(w).name?' ('+esc(P(w).name)+')':''}. Ждём…</p>${G.gate?`<p><small>${esc(G.gate.msg)}</small></p>`:''}`; if(G.battle&&G.battle.stage==='reveal') h+=battlePanel(true); }
   else if(G.gate){ h+=`<p>Ожидание: ${esc(P(G.gate.pi).f)}</p>`; }
