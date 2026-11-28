@@ -411,7 +411,7 @@ function battleCalc(){
     const ordK = s==='a' ? b.ok : (G.orders[b.to]&&G.orders[b.to].p===b.def&&ORD[G.orders[b.to].k].t==='D' ? G.orders[b.to].k : null);
     let order = ordK?ORD[ordK].b:0; if(en('Элендиль')) order=0; if(on('Имрахиль')||on('Азог')) order*=2;
     let support=0; for(const [n,side] of Object.entries(b.sup)){ if(side!==s) continue; const od=G.orders[n]; if(!od) continue; let v=0; G.units[n].forEach(u=>v+=unitVal(u,false,s==='a'&&walls)); let ob=ORD[od.k].b; if(on('Азог')) ob*=2; support+=v+ob; }
-    let wallsV=0; if(s==='d'){ wallsV = G.units[b.to].length?(walls?3:0):(walls?3:1); if(en('Древобород')) wallsV = G.units[b.to].length?0:1; }
+    let wallsV=0; if(s==='d'){ wallsV = G.units[b.to].length?(walls?3:0):(G.bld[b.to].fort?3:1); if(en('Древобород')) wallsV = G.units[b.to].length?0:1; }
     let card=c?c[1]:0;
     if(c&&nm!=='Галион'&&P(me).discard.some(i=>HEROES[P(me).f][i]&&HEROES[P(me).f][i][0]==='Галион')&&c.f===P(me).f) card+=1;
     if(on('Беорн')&&b.last[s]) card+=1;
@@ -455,7 +455,7 @@ function battleResolve(){
   b.res={attWins,W,L,ta:r.a.total,td:r.d.total,killed:0,lostFoot:0,before:sideUnits(L).length};
   const victims=sideUnits(L);
   loss=Math.min(loss,victims.length);
-  if(loss>0){ b.stage='kill'; b.ask={side:W,kind:'kill',n:loss}; return gate(bp(W),`Победа! Мечи: выберите ${loss} отряд(а) противника для уничтожения.`); }
+  if(loss>0){ b.stage='kill'; b.ask={side:L,kind:'kill',n:loss}; return gate(bp(L),`Поражение. Мечи противника: выберите ${loss} своих отряд(а), которые погибнут.`); }
   resolve2();
 }
 function killAnswer(idx){
@@ -663,7 +663,7 @@ function battlePanel(ro){
     if(a.kind==='drogot'||a.kind==='gulmatar') h+=`<input id="numv" type="number" min="0" value="0">`+btn('Готово',"answer(+document.getElementById('numv').value);render()",false,'main');
     if(a.kind==='saleme') h+=`<div class="ob">`+a.opts.map(([u,i])=>btn(UNIT[u].name+' — '+UNIT[u].str+'🪙',`answer(${i});render()`)).join('')+skip+`</div>`;
     return h; }
-  if(b.stage==='kill'){ const L=b.res.L, list=sideUnits(L); return head+`<h4>Выберите ${b.ask.n} отряд(а) противника для уничтожения</h4>`+list.map((u,i)=>`<label class="ck"><input type="checkbox" class="kv" value="${i}">${UNIT[u].name}</label>`).join('')+btn('Уничтожить',`const v=[...document.querySelectorAll('.kv:checked')].map(x=>+x.value); if(v.length!==${b.ask.n}){alert('Выберите ровно ${b.ask.n}');} else {killAnswer(v);render();}`,false,'main'); }
+  if(b.stage==='kill'){ const L=b.res.L, list=sideUnits(L); return head+`<h4>Выберите ${b.ask.n} своих отряд(а), которые погибнут</h4>`+list.map((u,i)=>`<label class="ck"><input type="checkbox" class="kv" value="${i}">${UNIT[u].name}</label>`).join('')+btn('Уничтожить',`const v=[...document.querySelectorAll('.kv:checked')].map(x=>+x.value); if(v.length!==${b.ask.n}){alert('Выберите ровно ${b.ask.n}');} else {killAnswer(v);render();}`,false,'main'); }
   if(b.stage==='retreat'){ const a=b.ask;
     if(a.scatter) return head+`<h4>Гришнак: каждый отряд может отступить отдельно</h4>`+b.surv.map((u,i)=>`<p>${UNIT[u].name}: <select class="rv">${a.opts.map(t=>`<option value="${t}">${esc(D.names[t])}</option>`).join('')}</select></p>`).join('')+btn('Отступить',"retreatAnswer(null,[...document.querySelectorAll('.rv')].map(x=>+x.value));render()",false,'main');
     return head+`<h4>Куда отступают выжившие?</h4><div class="ob">`+a.opts.map(t=>btn(esc(D.names[t])+(G.owner[t]===-1?' (свободная)':''),`retreatAnswer(${t});render()`)).join('')+`</div>`; }
@@ -710,7 +710,7 @@ function lobbyJoin(){ const name=(document.getElementById('nm').value||'Игро
 function startFromSetup(){ const f=[...panel.querySelectorAll('.fs input:checked')].map(i=>i.value); if(f.length<2||f.length>6){ alert('Нужно от 2 до 6 фракций'); return; } focus=null; newGame(f); render(); }
 function resetGame(){ if(NET.on){ leaveOnline(); return; } G=null; try{localStorage.removeItem(LS);}catch(e){} focus=null; render(); }
 const RULES=`<ol class="rules">
-<li><b>Цель.</b> Захватить всю карту и уничтожить всех противников. Число раундов не ограничено.</li>
+<li><b>Цель.</b> Уничтожить всех противников. Число раундов не ограничено.</li>
 <li><b>Старт.</b> У каждой фракции одна родовая земля, на ней 1 пехота, и 3 монеты.</li>
 <li><b>Раунд.</b> Замыслы (тайные приказы) → Палантир → Приказы (атаки) → Владычество (доход, найм, стройка). Ходят в порядке трека Аркенстона, каждый выполняет все свои атаки.</li>
 <li><b>Доход.</b> +1 за шахту, +1 за замок, +1 за крепость, +1 первому на Аркенстоне. Первый раунд начинается сразу с приказов, без покупок.</li>
@@ -721,8 +721,8 @@ const RULES=`<ol class="rules">
 <li><b>Ход.</b> Войска идут только в соседнюю территорию и только на один шаг за раунд: отряд, который уже пришёл в этом раунде, дальше не идёт.</li>
 <li><b>Приказы.</b> 7 штук, каждый один раз: атака +1, 0, −1; защита +2, +1; поддержка +1, 0. Ставятся на свои территории.</li>
 <li><b>Палантир.</b> Первый на треке после раскрытия может заменить один свой приказ. Его свойства карт действуют первыми.</li>
-<li><b>Бой.</b> Сила = войска + приказ + замок/крепость (+3, у обороны) + поддержка + герой. Мечи и щиты силу не добавляют. Победитель уничтожает столько отрядов проигравшего, сколько у него мечей минус щиты проигравшего, и сам выбирает, какие. Выжившие защитники отступают туда, куда выберет их хозяин: в соседнюю свою или свободную территорию; если некуда — погибают. Атакующий при поражении возвращается назад. Осадные орудия не отступают. Свойства героев игра применяет сама.</li>
-<li><b>Пустая территория.</b> Если на своей территории нет войск, при атаке она защищается силой 1, а если там замок или крепость — силой 3.</li>
+<li><b>Бой.</b> Сила = войска + приказ + замок/крепость (+3, у обороны) + поддержка + герой. Мечи и щиты силу не добавляют. Проигравший теряет столько отрядов, сколько у победителя мечей минус щиты проигравшего, и сам выбирает, какие. Выжившие защитники отступают туда, куда выберет их хозяин: в соседнюю свою или свободную территорию; если некуда — погибают. Атакующие при поражении возвращаются назад. Осадные орудия не отступают — при поражении они уничтожаются. Свойства героев игра применяет сама.</li>
+<li><b>Пустая территория.</b> Если на своей территории нет войск, при атаке она защищается силой 1, а если там крепость — силой 3. Территория с замком без ваших войск не может быть вашей (кроме родовой земли).</li>
 <li><b>Кольцо.</b> При равенстве сил побеждает тот, кто выше на треке Кольца. Первый на треке раз за фазу может добавить +1.</li>
 <li><b>Контроль.</b> Ушли все войска — территория ничья, если на ней нет ваших построек. Родовая земля всегда остаётся за своей фракцией: даже пустую её можно взять только боем, а если захватчик уйдёт из неё, она вернётся владельцу.</li></ol>`;
 (function boot(){
